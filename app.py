@@ -1,6 +1,6 @@
 # ============================================================
 # app.py - FINAL FIXED VERSION
-# HTTP 400 Error Fixed - Avatar Upload Working
+# HTTP 400 Error - Complete Fix
 # ============================================================
 
 import streamlit as st
@@ -76,40 +76,6 @@ st.markdown("""
     .summary-box .row .value.missing {
         color: #f87171;
     }
-    .avatar-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-        gap: 10px;
-        margin: 10px 0;
-    }
-    .avatar-card {
-        background: #1c1c26;
-        border: 2px solid #2c2c3a;
-        border-radius: 8px;
-        padding: 8px;
-        text-align: center;
-    }
-    .avatar-card img {
-        width: 100%;
-        aspect-ratio: 3/4;
-        object-fit: cover;
-        border-radius: 4px;
-    }
-    .avatar-card .avatar-name {
-        font-size: 11px;
-        color: #eaeaf0;
-        margin-top: 4px;
-    }
-    .voice-item {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        background: #1c1c26;
-        border: 1px solid #2c2c3a;
-        border-radius: 8px;
-        padding: 10px 12px;
-        margin: 4px 0;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -132,16 +98,17 @@ with col3:
     </div>
     """, unsafe_allow_html=True)
 
-# ===== FUNCTIONS =====
+# ===== API FUNCTIONS =====
 
 def upload_avatar(api_key, file_bytes, mime_type, file_name):
     """
-    Avatar upload - Using multipart/form-data (Correct way)
-    This fixes HTTP 400 error
+    Upload avatar using multipart/form-data - EXACTLY like Chrome Extension
     """
+    
+    # Use the same endpoint as Chrome Extension
     url = "https://upload.heygen.com/v1/talking_photo"
     
-    # Create multipart form data
+    # Prepare multipart form data - EXACT same as extension
     files = {
         'file': (file_name, file_bytes, mime_type)
     }
@@ -150,13 +117,14 @@ def upload_avatar(api_key, file_bytes, mime_type, file_name):
         'x-api-key': api_key
     }
     
-    # Make the request
+    # Make request
     response = requests.post(url, headers=headers, files=files)
     
-    # Debug output
+    # Debug
     print(f"Status: {response.status_code}")
-    print(f"Response: {response.text[:500]}")
+    print(f"Response: {response.text}")
     
+    # Check response
     if response.status_code != 200:
         try:
             error_data = response.json()
@@ -170,8 +138,9 @@ def upload_avatar(api_key, file_bytes, mime_type, file_name):
     if data.get('error'):
         raise Exception(f"Upload failed: {data['error'].get('message', 'Unknown error')}")
     
-    talking_photo_id = data['data']['talking_photo_id']
-    preview_url = data['data']['talking_photo_url']
+    # Extract data
+    talking_photo_id = data.get('data', {}).get('talking_photo_id')
+    preview_url = data.get('data', {}).get('talking_photo_url')
     
     if not talking_photo_id:
         raise Exception("talking_photo_id not found in response")
@@ -188,7 +157,7 @@ def list_voices(api_key):
     )
     data = response.json()
     if response.status_code != 200 or data.get('error'):
-        raise Exception(data.get('error', {}).get('message', f'Voices load nahi hui'))
+        raise Exception(data.get('error', {}).get('message', 'Voices load nahi hui'))
     return data['data'] if isinstance(data['data'], list) else data['data'].get('voices', [])
 
 def list_avatars(api_key):
@@ -198,7 +167,7 @@ def list_avatars(api_key):
     )
     data = response.json()
     if response.status_code != 200 or data.get('error'):
-        raise Exception(data.get('error', {}).get('message', f'Avatars load nahi hue'))
+        raise Exception(data.get('error', {}).get('message', 'Avatars load nahi hue'))
     return data['data']['avatars']
 
 def split_script(script, max_len=4900):
@@ -293,7 +262,7 @@ def check_agent_status(api_key, session_id):
 # ===== TABS =====
 tab1, tab2, tab3, tab4 = st.tabs(["🔑 Settings", "👤 Avatar", "🎤 Voice", "🎬 Video Banao"])
 
-# ===== TAB 1: SETTINGS =====
+# ===== TAB 1 =====
 with tab1:
     st.markdown("""
     <div style="background:#1a1a2e;border:2px solid #4ade80;border-radius:10px;padding:15px;margin:10px 0;">
@@ -316,17 +285,23 @@ with tab2:
             help="Best result ke liye clear face, achi lighting"
         )
         
-        if avatar_file and st.button("📤 Upload & Save Avatar", use_container_width=True):
+        # Show file info
+        if avatar_file:
+            file_bytes = avatar_file.read()
+            st.info(f"📁 File: {avatar_file.name}")
+            st.info(f"📊 Size: {len(file_bytes)} bytes ({len(file_bytes)//1024} KB)")
+            st.info(f"📌 Type: {avatar_file.type}")
+            
+            # Reset file pointer
+            avatar_file.seek(0)
+        
+        if avatar_file and st.button("📤 Upload & Save Avatar", use_container_width=True, type="primary"):
             with st.spinner("Upload ho raha hai..."):
                 try:
-                    # Read file directly as bytes
+                    # Read file
                     file_bytes = avatar_file.read()
                     
-                    # Debug info
-                    st.info(f"File size: {len(file_bytes)} bytes")
-                    st.info(f"File type: {avatar_file.type}")
-                    
-                    # Upload using multipart/form-data
+                    # Upload
                     result = upload_avatar(
                         st.session_state.api_key,
                         file_bytes,
@@ -337,22 +312,32 @@ with tab2:
                     st.session_state.talking_photo_id = result['talking_photo_id']
                     st.session_state.avatar_preview_url = result['preview_url']
                     
-                    st.success(f"✅ Avatar save ho gaya!")
+                    st.success("✅ Avatar save ho gaya!")
                     st.info(f"🆔 ID: {result['talking_photo_id'][:30]}...")
                     st.rerun()
                     
                 except Exception as e:
                     st.error(f"❌ Error: {str(e)}")
-                    st.info("💡 Tip: Try using a smaller image or different format")
+                    st.info("💡 Tip: Try compressing the image to under 2MB")
     
     with col2:
         if st.session_state.avatar_preview_url:
             st.image(st.session_state.avatar_preview_url, caption="Your Avatar", use_container_width=True)
             if st.session_state.talking_photo_id:
-                st.success(f"✅ Avatar Ready!")
-                st.code(st.session_state.talking_photo_id[:40] + "...", language="text")
+                st.success("✅ Avatar III Ready!")
         else:
             st.info("👆 Photo upload karo")
+            st.markdown("""
+            <div style="background:#1a1a2e;border:1px solid #2c2c3a;border-radius:8px;padding:12px;margin-top:10px;">
+                <strong style="color:#8b8b9a;">📝 Requirements:</strong><br>
+                <span style="color:#6f6f80;font-size:12px;">
+                • Clear, front-facing photo<br>
+                • Good lighting<br>
+                • PNG or JPG format<br>
+                • Recommended: under 2MB
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
     
     # Avatar List
     st.markdown("---")
@@ -372,12 +357,8 @@ with tab2:
         for i, av in enumerate(st.session_state._avatars[:8]):
             col = cols[i % 4]
             with col:
-                st.markdown(f"""
-                <div class="avatar-card">
-                    <img src="{av.get('preview_image_url', '')}" alt="{av.get('avatar_name', 'Avatar')}">
-                    <span class="avatar-name">{av.get('avatar_name', av.get('avatar_id', 'Avatar'))}</span>
-                </div>
-                """, unsafe_allow_html=True)
+                st.image(av.get('preview_image_url', ''), use_container_width=True)
+                st.caption(av.get('avatar_name', av.get('avatar_id', 'Avatar')))
 
 # ===== TAB 3: VOICE =====
 with tab3:
