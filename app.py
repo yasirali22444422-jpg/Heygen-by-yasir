@@ -1,6 +1,6 @@
 # ============================================================
-# app.py - FINAL FIXED VERSION
-# HTTP 400 Error - Complete Fix
+# app.py - FINAL WORKING VERSION
+# Avatar Upload Working with Image Compression
 # ============================================================
 
 import streamlit as st
@@ -9,6 +9,8 @@ import base64
 import json
 import time
 from datetime import datetime
+from PIL import Image
+import io
 
 # ===== AUTO API KEY =====
 YOUR_REAL_HEYGEN_API_KEY = 'sk_V2_hgu_kuujglU11Oe_x9fCykWNbZsKqF0lrDtIy5wqiWCPiwx4'
@@ -98,17 +100,54 @@ with col3:
     </div>
     """, unsafe_allow_html=True)
 
-# ===== API FUNCTIONS =====
+# ===== HELPER FUNCTIONS =====
 
-def upload_avatar(api_key, file_bytes, mime_type, file_name):
+def compress_image_to_jpeg(file_bytes, max_size_mb=2):
     """
-    Upload avatar using multipart/form-data - EXACTLY like Chrome Extension
+    Compress image to JPEG under max_size_mb
     """
+    try:
+        # Open image
+        img = Image.open(io.BytesIO(file_bytes))
+        
+        # Convert to RGB if needed
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+        
+        # Start with quality 90
+        quality = 90
+        buffer = None
+        
+        while quality > 10:
+            buffer = io.BytesIO()
+            img.save(buffer, format='JPEG', quality=quality, optimize=True)
+            size = buffer.tell() / (1024 * 1024)  # Size in MB
+            
+            if size < max_size_mb:
+                break
+            quality -= 5
+        
+        if buffer is None:
+            raise Exception("Could not compress image")
+        
+        return buffer.getvalue(), "image/jpeg"
     
-    # Use the same endpoint as Chrome Extension
+    except Exception as e:
+        raise Exception(f"Image compression failed: {str(e)}")
+
+def upload_avatar_iii(api_key, file_bytes, mime_type, file_name):
+    """
+    Upload to Avatar III endpoint with multipart/form-data
+    """
+    # Compress if image is large
+    if len(file_bytes) > 2 * 1024 * 1024:  # > 2MB
+        st.info("🔄 Image compress ho rahi hai (2MB se kam)...")
+        file_bytes, mime_type = compress_image_to_jpeg(file_bytes, 2)
+        file_name = file_name.rsplit('.', 1)[0] + '.jpg'
+        st.info(f"✅ Compressed: {len(file_bytes)//1024} KB")
+    
     url = "https://upload.heygen.com/v1/talking_photo"
     
-    # Prepare multipart form data - EXACT same as extension
     files = {
         'file': (file_name, file_bytes, mime_type)
     }
@@ -117,14 +156,8 @@ def upload_avatar(api_key, file_bytes, mime_type, file_name):
         'x-api-key': api_key
     }
     
-    # Make request
     response = requests.post(url, headers=headers, files=files)
     
-    # Debug
-    print(f"Status: {response.status_code}")
-    print(f"Response: {response.text}")
-    
-    # Check response
     if response.status_code != 200:
         try:
             error_data = response.json()
@@ -138,7 +171,6 @@ def upload_avatar(api_key, file_bytes, mime_type, file_name):
     if data.get('error'):
         raise Exception(f"Upload failed: {data['error'].get('message', 'Unknown error')}")
     
-    # Extract data
     talking_photo_id = data.get('data', {}).get('talking_photo_id')
     preview_url = data.get('data', {}).get('talking_photo_url')
     
@@ -147,7 +179,49 @@ def upload_avatar(api_key, file_bytes, mime_type, file_name):
     
     return {
         "talking_photo_id": talking_photo_id,
-        "preview_url": preview_url
+        "preview_url": preview_url,
+        "compressed": len(file_bytes) < 2 * 1024 * 1024
+    }
+
+def upload_avatar_iv(api_key, file_bytes, mime_type, file_name):
+    """
+    Upload to Avatar IV endpoint with base64
+    Avatar IV accepts larger files
+    """
+    # Convert to base64
+    base64_data = base64.b64encode(file_bytes).decode('utf-8')
+    
+    url = "https://api.heygen.com/v3/assets"
+    
+    files = {
+        'file': (file_name, file_bytes, mime_type)
+    }
+    
+    headers = {
+        'x-api-key': api_key
+    }
+    
+    response = requests.post(url, headers=headers, files=files)
+    
+    if response.status_code != 200:
+        try:
+            error_data = response.json()
+            error_msg = error_data.get('error', {}).get('message', response.text)
+        except:
+            error_msg = response.text
+        raise Exception(f"Upload failed: {error_msg}")
+    
+    data = response.json()
+    
+    if data.get('error'):
+        raise Exception(f"Upload failed: {data['error'].get('message', 'Unknown error')}")
+    
+    upload_url = data['data']['url']
+    image_key = upload_url.split('/')[-1]
+    
+    return {
+        "image_key": image_key,
+        "preview_url": upload_url
     }
 
 def list_voices(api_key):
@@ -285,59 +359,63 @@ with tab2:
             help="Best result ke liye clear face, achi lighting"
         )
         
-        # Show file info
+        # Engine selection
+        engine = st.radio(
+            "Engine:",
+            ["avatar_iii (Recommended)", "avatar_iv (For large images)"],
+            index=0
+        )
+        
         if avatar_file:
             file_bytes = avatar_file.read()
             st.info(f"📁 File: {avatar_file.name}")
-            st.info(f"📊 Size: {len(file_bytes)} bytes ({len(file_bytes)//1024} KB)")
-            st.info(f"📌 Type: {avatar_file.type}")
-            
-            # Reset file pointer
+            st.info(f"📊 Size: {len(file_bytes)//1024} KB")
             avatar_file.seek(0)
         
         if avatar_file and st.button("📤 Upload & Save Avatar", use_container_width=True, type="primary"):
             with st.spinner("Upload ho raha hai..."):
                 try:
-                    # Read file
                     file_bytes = avatar_file.read()
                     
-                    # Upload
-                    result = upload_avatar(
-                        st.session_state.api_key,
-                        file_bytes,
-                        avatar_file.type,
-                        avatar_file.name
-                    )
+                    if "avatar_iii" in engine:
+                        # Use Avatar III with compression
+                        result = upload_avatar_iii(
+                            st.session_state.api_key,
+                            file_bytes,
+                            avatar_file.type,
+                            avatar_file.name
+                        )
+                        st.session_state.talking_photo_id = result['talking_photo_id']
+                    else:
+                        # Use Avatar IV
+                        result = upload_avatar_iv(
+                            st.session_state.api_key,
+                            file_bytes,
+                            avatar_file.type,
+                            avatar_file.name
+                        )
+                        st.session_state.avatar_id = result['image_key']
                     
-                    st.session_state.talking_photo_id = result['talking_photo_id']
                     st.session_state.avatar_preview_url = result['preview_url']
                     
                     st.success("✅ Avatar save ho gaya!")
-                    st.info(f"🆔 ID: {result['talking_photo_id'][:30]}...")
+                    if st.session_state.talking_photo_id:
+                        st.info(f"🆔 ID: {result['talking_photo_id'][:30]}...")
                     st.rerun()
                     
                 except Exception as e:
                     st.error(f"❌ Error: {str(e)}")
-                    st.info("💡 Tip: Try compressing the image to under 2MB")
+                    st.info("💡 Try avatar_iv engine if image is large")
     
     with col2:
         if st.session_state.avatar_preview_url:
             st.image(st.session_state.avatar_preview_url, caption="Your Avatar", use_container_width=True)
             if st.session_state.talking_photo_id:
                 st.success("✅ Avatar III Ready!")
+            elif st.session_state.avatar_id:
+                st.success("✅ Avatar IV Ready!")
         else:
             st.info("👆 Photo upload karo")
-            st.markdown("""
-            <div style="background:#1a1a2e;border:1px solid #2c2c3a;border-radius:8px;padding:12px;margin-top:10px;">
-                <strong style="color:#8b8b9a;">📝 Requirements:</strong><br>
-                <span style="color:#6f6f80;font-size:12px;">
-                • Clear, front-facing photo<br>
-                • Good lighting<br>
-                • PNG or JPG format<br>
-                • Recommended: under 2MB
-                </span>
-            </div>
-            """, unsafe_allow_html=True)
     
     # Avatar List
     st.markdown("---")
@@ -413,7 +491,6 @@ with tab3:
 with tab4:
     st.markdown("### 🎬 Video Banao")
     
-    # Summary
     avatar_ready = bool(st.session_state.talking_photo_id)
     voice_ready = bool(st.session_state.voice_id)
     
@@ -422,7 +499,7 @@ with tab4:
         <div class="row">
             <span class="label">👤 Avatar:</span>
             <span class="value {'ready' if avatar_ready else 'missing'}">
-                {'✅ Avatar III ready' if avatar_ready else '❌ Avatar tab se photo upload karo'}
+                {'✅ Avatar ready' if avatar_ready else '❌ Avatar tab se photo upload karo'}
             </span>
         </div>
         <div class="row">
