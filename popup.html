@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8" />
+<title>HeyGen Avatar & Voice Studio</title>
+<link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="logo-dot"></div>
+    <h1>Avatar &amp; Voice Studio</h1>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="settings">Password</button>
+    <button class="tab-btn" data-tab="avatar">Avatar</button>
+    <button class="tab-btn" data-tab="voice">Voice</button>
+    <button class="tab-btn" data-tab="agent">Video Banao</button>
+  </nav>
+
+  <main>
+    <!-- SETTINGS TAB -->
+    <section id="tab-settings" class="tab-panel active">
+      <label class="field-label" for="apiKey">✅ HeyGen API Key</label>
+      <input type="text" id="apiKey" placeholder="HeyGen Dashboard se API Key paste karo" style="background:#1a1a2e;color:#4ade80;font-weight:bold;text-align:center;font-size:14px;border:2px solid #4ade80;border-radius:8px;padding:10px;width:100%;" />
+      <button id="saveKeyBtn" class="primary-btn" style="display:block;margin-top:8px;width:100%;">✅ Save API Key</button>
+      <p id="keyStatus" class="status-text" style="color:#4ade80;font-weight:bold;">✅ Team Access: Unlimited use!</p>
+      <p class="hint" style="color:#4ade80;">🎉 No verification needed - Direct Access!</p>
+    </section>
+
+    <!-- AVATAR TAB -->
+    <section id="tab-avatar" class="tab-panel">
+      <div class="sub-tabs">
+        <button class="sub-tab-btn active" data-subtab="myphoto">Apna Photo</button>
+        <button class="sub-tab-btn" data-subtab="avatarlist">Avatar List</button>
+      </div>
+
+      <div id="subtab-myphoto" class="sub-panel active">
+        <input type="hidden" name="motionEngine" value="avatar_iii" />
+
+        <label class="field-label">Apna Photo Upload Karo</label>
+        <input type="file" id="avatarFile" accept="image/png, image/jpeg" />
+        <div id="avatarPreviewWrap" class="preview-wrap hidden">
+          <img id="avatarPreview" alt="avatar preview" />
+        </div>
+        <button id="uploadAvatarBtn" class="primary-btn">Upload &amp; Save Avatar</button>
+        <p id="avatarStatus" class="status-text"></p>
+        <p id="avatarAgentLookStatus" class="status-text"></p>
+        <p class="hint">Clear face, achi lighting, front-facing photo best result deta hai.</p>
+      </div>
+
+      <div id="subtab-avatarlist" class="sub-panel">
+        <p class="hint">HeyGen ke ready-made avatars me se koi ek select karo.</p>
+        <button id="loadAvatarsBtn" class="primary-btn">Avatars Load Karo</button>
+        <p id="avatarListStatus" class="status-text"></p>
+        <div id="avatarGrid" class="avatar-grid"></div>
+      </div>
+    </section>
+
+    <!-- VOICE TAB -->
+    <section id="tab-voice" class="tab-panel">
+      <div class="sub-tabs three">
+        <button class="sub-tab-btn active" data-subtab="voicelist">Voice List</button>
+        <button class="sub-tab-btn" data-subtab="existing">Voice ID</button>
+        <button class="sub-tab-btn" data-subtab="clone">Clone</button>
+      </div>
+
+      <div id="subtab-voicelist" class="sub-panel active">
+        <p class="hint">HeyGen ki saari available voices yaha se search aur select karo — Voice ID daalne ki zaroorat nahi.</p>
+        <input type="text" id="voiceSearchInput" placeholder="Search: naam, language (jaise Hindi, English)..." />
+        <button id="loadVoicesBtn" class="primary-btn">Voices Load Karo</button>
+        <p id="voiceListStatus" class="status-text"></p>
+        <div id="voiceList" class="voice-list"></div>
+      </div>
+
+      <div id="subtab-existing" class="sub-panel">
+        <p class="hint recommended">✅ Recommended: HeyGen website (app.heygen.com → Voices → Instant Voice Clone) par voice clone karke yaha uska Voice ID paste karo — zyada reliable hai.</p>
+        <label class="field-label" for="voiceIdInput">Voice ID</label>
+        <input type="text" id="voiceIdInput" placeholder="jaise: 1bd001e7e50f421d891986aad5c8bbd2" />
+        <button id="saveVoiceIdBtn" class="primary-btn">Save Voice ID</button>
+        <p id="voiceIdStatus" class="status-text"></p>
+      </div>
+
+      <div id="subtab-clone" class="sub-panel">
+        <p class="hint warn">⚠️ Direct voice clone kabhi-kabhi fail/unreliable hoti hai. Agar error aaye, toh "Voice ID" tab use karo aur HeyGen website se clone karo.</p>
+        <label class="field-label">Voice Sample Upload Karo (30 sec+ clear audio)</label>
+        <input type="file" id="voiceFile" accept="audio/mpeg, audio/wav, audio/mp3" />
+        <label class="field-label" for="voiceName">Voice Name</label>
+        <input type="text" id="voiceName" placeholder="jaise: Rehman Voice" />
+        <button id="cloneVoiceBtn" class="primary-btn">Clone Voice</button>
+        <p id="cloneStatus" class="status-text"></p>
+      </div>
+    </section>
+
+    <!-- VIDEO BANAO TAB -->
+    <section id="tab-agent" class="tab-panel">
+
+      <!-- Sub-tabs: Script Se | Topic Se -->
+      <div class="sub-tabs two">
+        <button class="sub-tab-btn active" data-subtab="renderscene">✍️ Script Se</button>
+        <button class="sub-tab-btn" data-subtab="agentvideo">🤖 Topic Se (3 min)</button>
+      </div>
+
+      <!-- RENDER SCENE -->
+      <div id="subtab-renderscene" class="sub-panel active">
+
+        <!-- Auto-detected Avatar + Voice summary -->
+        <div id="rsSummaryBox" class="rs-summary-box">
+          <div id="rsSummaryAvatar" class="rs-summary-row">
+            <img id="rsSummaryAvatarImg" class="rs-summary-thumb hidden" src="" alt="" />
+            <span id="rsSummaryAvatarText">⏳ Avatar tab se photo upload karo</span>
+          </div>
+          <div id="rsSummaryVoice" class="rs-summary-row">
+            <span id="rsSummaryVoiceText">⏳ Voice tab se voice select karo</span>
+          </div>
+        </div>
+
+        <!-- Script -->
+        <label class="field-label" for="rsScript">Script Likho</label>
+        <textarea id="rsScript" rows="5" placeholder="Yahan woh exact text likho jo avatar bolega..."></textarea>
+        <p id="rsScriptCharCount" class="hint char-count">0 / 30000 characters</p>
+
+        <!-- Orientation -->
+        <label class="field-label" for="rsOrientation">Orientation</label>
+        <select id="rsOrientation">
+          <option value="landscape">Landscape (16:9)</option>
+          <option value="portrait">Portrait (9:16)</option>
+        </select>
+
+        <button id="rsRenderBtn" class="primary-btn">🎬 Render Karo</button>
+        <p id="rsStatus" class="status-text"></p>
+      </div>
+
+      <!-- AGENT VIDEO (Topic Se — max 3 min) -->
+      <div id="subtab-agentvideo" class="sub-panel">
+
+        <!-- Same Avatar + Voice summary -->
+        <div class="rs-summary-box">
+          <div class="rs-summary-row">
+            <img id="avSummaryAvatarImg" class="rs-summary-thumb hidden" src="" alt="" />
+            <span id="avSummaryAvatarText">⏳ Avatar tab se photo upload karo</span>
+          </div>
+          <div class="rs-summary-row">
+            <span id="avSummaryVoiceText">⏳ Voice tab se voice select karo</span>
+          </div>
+        </div>
+
+        <p class="hint" style="margin-bottom:6px;">🤖 HeyGen khud script likhega — sirf topic batao. Video max <strong>3 minute</strong> ki banegi.</p>
+
+        <label class="field-label" for="avPrompt">Topic / Prompt</label>
+        <textarea id="avPrompt" rows="4" placeholder="Jaise: 'Collagen ke fayde aur marine collagen ka use kaise karein — 3 minute ki video'"></textarea>
+        <p id="avPromptCharCount" class="hint char-count">0 / 10000 characters</p>
+
+        <label class="field-label" for="avOrientation">Orientation</label>
+        <select id="avOrientation">
+          <option value="landscape">Landscape (16:9)</option>
+          <option value="portrait">Portrait (9:16)</option>
+        </select>
+
+        <button id="avRenderBtn" class="primary-btn">🤖 Agent Video Banao</button>
+        <p id="avStatus" class="status-text"></p>
+      </div>
+
+      <!-- Meri Videos gallery -->
+      <div class="history-header">
+        <h2>Meri Videos</h2>
+        <p id="agentHistoryCount" class="hint"></p>
+      </div>
+      <div id="agentHistoryGrid" class="agent-history-grid"></div>
+    </section>
+  </main>
+
+  <script src="gate.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
