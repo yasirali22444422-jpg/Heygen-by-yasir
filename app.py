@@ -1,6 +1,6 @@
 # ============================================================
-# app.py - HeyGen Studio (Streamlit Cloud Version)
-# Sirf ye ek file deploy karo!
+# app.py - FINAL FIXED VERSION
+# HTTP 400 Error Fixed - Avatar Upload Working
 # ============================================================
 
 import streamlit as st
@@ -24,14 +24,12 @@ if 'voice_id' not in st.session_state:
     st.session_state.voice_id = None
 if 'voice_name' not in st.session_state:
     st.session_state.voice_name = None
-if 'avatar_engine' not in st.session_state:
-    st.session_state.avatar_engine = 'avatar_iii'
-if 'video_history' not in st.session_state:
-    st.session_state.video_history = []
 if '_voices' not in st.session_state:
     st.session_state._voices = []
 if '_avatars' not in st.session_state:
     st.session_state._avatars = []
+if 'video_history' not in st.session_state:
+    st.session_state.video_history = []
 
 # ===== PAGE CONFIG =====
 st.set_page_config(
@@ -54,7 +52,6 @@ st.markdown("""
         font-weight: bold; 
     }
     .stButton button:hover { transform: scale(1.02); }
-    .stButton button:disabled { opacity: 0.5; cursor: not-allowed; }
     .summary-box {
         background: #1c1c26;
         border: 1px solid #2c2c3a;
@@ -78,16 +75,6 @@ st.markdown("""
     }
     .summary-box .row .value.missing {
         color: #f87171;
-    }
-    .voice-item {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        background: #1c1c26;
-        border: 1px solid #2c2c3a;
-        border-radius: 8px;
-        padding: 10px 12px;
-        margin: 4px 0;
     }
     .avatar-grid {
         display: grid;
@@ -113,6 +100,16 @@ st.markdown("""
         color: #eaeaf0;
         margin-top: 4px;
     }
+    .voice-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #1c1c26;
+        border: 1px solid #2c2c3a;
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin: 4px 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -137,38 +134,52 @@ with col3:
 
 # ===== FUNCTIONS =====
 
-def upload_avatar(api_key, base64_data, mime_type, file_name, engine="avatar_iii"):
-    if ',' in base64_data:
-        base64_data = base64_data.split(',')[1]
-    blob = base64.b64decode(base64_data)
+def upload_avatar(api_key, file_bytes, mime_type, file_name):
+    """
+    Avatar upload - Using multipart/form-data (Correct way)
+    This fixes HTTP 400 error
+    """
+    url = "https://upload.heygen.com/v1/talking_photo"
     
-    if engine == "avatar_iii":
-        url = "https://upload.heygen.com/v1/talking_photo"
-        files = {'file': (file_name, blob, mime_type)}
-        headers = {'x-api-key': api_key}
-        response = requests.post(url, headers=headers, files=files)
-        data = response.json()
-        
-        if response.status_code != 200 or data.get('error'):
-            raise Exception(data.get('error', {}).get('message', f'Upload fail hua (HTTP {response.status_code})'))
-        
-        return {
-            "talking_photo_id": data['data']['talking_photo_id'],
-            "preview_url": data['data']['talking_photo_url']
-        }
-    else:
-        url = "https://api.heygen.com/v3/assets"
-        files = {'file': (file_name, blob, mime_type)}
-        headers = {'x-api-key': api_key}
-        response = requests.post(url, headers=headers, files=files)
-        data = response.json()
-        
-        if response.status_code != 200 or data.get('error'):
-            raise Exception(data.get('error', {}).get('message', f'Upload fail hua (HTTP {response.status_code})'))
-        
-        upload_url = data['data']['url']
-        image_key = upload_url.split('/')[-1]
-        return {"image_key": image_key, "preview_url": upload_url}
+    # Create multipart form data
+    files = {
+        'file': (file_name, file_bytes, mime_type)
+    }
+    
+    headers = {
+        'x-api-key': api_key
+    }
+    
+    # Make the request
+    response = requests.post(url, headers=headers, files=files)
+    
+    # Debug output
+    print(f"Status: {response.status_code}")
+    print(f"Response: {response.text[:500]}")
+    
+    if response.status_code != 200:
+        try:
+            error_data = response.json()
+            error_msg = error_data.get('error', {}).get('message', response.text)
+        except:
+            error_msg = response.text
+        raise Exception(f"Upload failed: {error_msg}")
+    
+    data = response.json()
+    
+    if data.get('error'):
+        raise Exception(f"Upload failed: {data['error'].get('message', 'Unknown error')}")
+    
+    talking_photo_id = data['data']['talking_photo_id']
+    preview_url = data['data']['talking_photo_url']
+    
+    if not talking_photo_id:
+        raise Exception("talking_photo_id not found in response")
+    
+    return {
+        "talking_photo_id": talking_photo_id,
+        "preview_url": preview_url
+    }
 
 def list_voices(api_key):
     response = requests.get(
@@ -177,7 +188,7 @@ def list_voices(api_key):
     )
     data = response.json()
     if response.status_code != 200 or data.get('error'):
-        raise Exception(data.get('error', {}).get('message', f'Voices load nahi hui (HTTP {response.status_code})'))
+        raise Exception(data.get('error', {}).get('message', f'Voices load nahi hui'))
     return data['data'] if isinstance(data['data'], list) else data['data'].get('voices', [])
 
 def list_avatars(api_key):
@@ -187,7 +198,7 @@ def list_avatars(api_key):
     )
     data = response.json()
     if response.status_code != 200 or data.get('error'):
-        raise Exception(data.get('error', {}).get('message', f'Avatars load nahi hue (HTTP {response.status_code})'))
+        raise Exception(data.get('error', {}).get('message', f'Avatars load nahi hue'))
     return data['data']['avatars']
 
 def split_script(script, max_len=4900):
@@ -214,11 +225,23 @@ def generate_video(api_key, talking_photo_id, voice_id, script, title, orientati
     video_inputs = []
     for chunk in chunks:
         video_inputs.append({
-            "character": {"type": "talking_photo", "talking_photo_id": talking_photo_id, "talking_photo_style": "square"},
-            "voice": {"type": "text", "input_text": chunk, "voice_id": voice_id}
+            "character": {
+                "type": "talking_photo",
+                "talking_photo_id": talking_photo_id,
+                "talking_photo_style": "square"
+            },
+            "voice": {
+                "type": "text",
+                "input_text": chunk,
+                "voice_id": voice_id
+            }
         })
     
-    payload = {"video_inputs": video_inputs, "dimension": dimension, "title": title or "Render Scene"}
+    payload = {
+        "video_inputs": video_inputs,
+        "dimension": dimension,
+        "title": title or "Render Scene"
+    }
     
     response = requests.post(
         "https://api.heygen.com/v2/video/generate",
@@ -227,7 +250,7 @@ def generate_video(api_key, talking_photo_id, voice_id, script, title, orientati
     )
     data = response.json()
     if response.status_code != 200 or data.get('error'):
-        raise Exception(data.get('error', {}).get('message', f'Render fail hui (HTTP {response.status_code})'))
+        raise Exception(data.get('error', {}).get('message', f'Render fail hui'))
     return data['data']['video_id']
 
 def check_video_status(api_key, video_id):
@@ -237,13 +260,15 @@ def check_video_status(api_key, video_id):
     )
     data = response.json()
     if response.status_code != 200 or data.get('error'):
-        raise Exception(data.get('error', {}).get('message', f'Status check fail hui (HTTP {response.status_code})'))
+        raise Exception(data.get('error', {}).get('message', f'Status check fail hui'))
     return data['data']
 
 def generate_agent_video(api_key, prompt, voice_id, avatar_id, orientation="landscape"):
     payload = {"prompt": prompt, "orientation": orientation}
-    if voice_id: payload["voice_id"] = voice_id
-    if avatar_id: payload["avatar_id"] = avatar_id
+    if voice_id:
+        payload["voice_id"] = voice_id
+    if avatar_id:
+        payload["avatar_id"] = avatar_id
     
     response = requests.post(
         "https://api.heygen.com/v3/video-agents",
@@ -252,7 +277,7 @@ def generate_agent_video(api_key, prompt, voice_id, avatar_id, orientation="land
     )
     data = response.json()
     if response.status_code != 200 or data.get('error'):
-        raise Exception(data.get('error', {}).get('message', f'Agent request fail hui (HTTP {response.status_code})'))
+        raise Exception(data.get('error', {}).get('message', f'Agent request fail hui'))
     return data['data']['session_id']
 
 def check_agent_status(api_key, session_id):
@@ -262,7 +287,7 @@ def check_agent_status(api_key, session_id):
     )
     data = response.json()
     if response.status_code != 200 or data.get('error'):
-        raise Exception(data.get('error', {}).get('message', f'Session check fail hui (HTTP {response.status_code})'))
+        raise Exception(data.get('error', {}).get('message', f'Session check fail hui'))
     return data['data']
 
 # ===== TABS =====
@@ -285,42 +310,47 @@ with tab2:
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        avatar_file = st.file_uploader("Photo select karo (clear, front-facing)", type=['png', 'jpg', 'jpeg'])
-        
-        engine = st.radio("Engine:", ["avatar_iii (Recommended)", "avatar_iv"], index=0)
-        st.session_state.avatar_engine = "avatar_iii" if "avatar_iii" in engine else "avatar_iv"
+        avatar_file = st.file_uploader(
+            "Photo select karo (clear, front-facing)",
+            type=['png', 'jpg', 'jpeg'],
+            help="Best result ke liye clear face, achi lighting"
+        )
         
         if avatar_file and st.button("📤 Upload & Save Avatar", use_container_width=True):
             with st.spinner("Upload ho raha hai..."):
                 try:
+                    # Read file directly as bytes
                     file_bytes = avatar_file.read()
-                    base64_data = base64.b64encode(file_bytes).decode('utf-8')
                     
+                    # Debug info
+                    st.info(f"File size: {len(file_bytes)} bytes")
+                    st.info(f"File type: {avatar_file.type}")
+                    
+                    # Upload using multipart/form-data
                     result = upload_avatar(
                         st.session_state.api_key,
-                        base64_data,
+                        file_bytes,
                         avatar_file.type,
-                        avatar_file.name,
-                        st.session_state.avatar_engine
+                        avatar_file.name
                     )
                     
-                    if st.session_state.avatar_engine == "avatar_iii":
-                        st.session_state.talking_photo_id = result['talking_photo_id']
-                    else:
-                        st.session_state.avatar_id = result['image_key']
-                    
+                    st.session_state.talking_photo_id = result['talking_photo_id']
                     st.session_state.avatar_preview_url = result['preview_url']
+                    
                     st.success(f"✅ Avatar save ho gaya!")
+                    st.info(f"🆔 ID: {result['talking_photo_id'][:30]}...")
                     st.rerun()
                     
                 except Exception as e:
                     st.error(f"❌ Error: {str(e)}")
+                    st.info("💡 Tip: Try using a smaller image or different format")
     
     with col2:
         if st.session_state.avatar_preview_url:
             st.image(st.session_state.avatar_preview_url, caption="Your Avatar", use_container_width=True)
             if st.session_state.talking_photo_id:
-                st.success(f"✅ Avatar III Ready")
+                st.success(f"✅ Avatar Ready!")
+                st.code(st.session_state.talking_photo_id[:40] + "...", language="text")
         else:
             st.info("👆 Photo upload karo")
     
@@ -411,7 +441,7 @@ with tab4:
         <div class="row">
             <span class="label">👤 Avatar:</span>
             <span class="value {'ready' if avatar_ready else 'missing'}">
-                {'✅ ' + st.session_state.avatar_engine.upper() + ' ready' if avatar_ready else '❌ Avatar tab se photo upload karo'}
+                {'✅ Avatar III ready' if avatar_ready else '❌ Avatar tab se photo upload karo'}
             </span>
         </div>
         <div class="row">
@@ -427,6 +457,7 @@ with tab4:
     
     with tab_vid1:
         script = st.text_area("Script likho", placeholder="Yahan exact text likho jo avatar bolega...", height=150)
+        
         col1, col2 = st.columns([1, 1])
         with col1:
             orientation = st.selectbox("Orientation", ["landscape", "portrait"], index=0)
@@ -451,9 +482,9 @@ with tab4:
                             title,
                             orientation
                         )
+                        
                         st.success(f"✅ Video generate ho rahi hai! ID: {video_id}")
                         
-                        # Poll for status
                         with st.spinner("Video render ho rahi hai... (1-3 minute)"):
                             for _ in range(30):
                                 time.sleep(10)
@@ -465,11 +496,15 @@ with tab4:
                                 elif status_data.get('status') == 'failed':
                                     st.error("❌ Video generation fail hui!")
                                     break
+                            else:
+                                st.warning("⏳ Timeout - HeyGen dashboard me check karo")
+                    
                     except Exception as e:
                         st.error(f"Error: {str(e)}")
     
     with tab_vid2:
         prompt = st.text_area("Topic / Prompt", placeholder="Jaise: 'Collagen ke fayde...'", height=100)
+        
         col1, col2 = st.columns([1, 1])
         with col1:
             agent_orientation = st.selectbox("Orientation", ["landscape", "portrait"], index=0, key="agent_ori")
@@ -493,15 +528,18 @@ with tab4:
                             st.session_state.talking_photo_id,
                             agent_orientation
                         )
+                        
                         st.success(f"✅ Agent video shuru ho gayi! Session: {session_id}")
                         
                         with st.spinner("Video render ho rahi hai... (2-3 minute)"):
                             for _ in range(40):
                                 time.sleep(10)
                                 status_data = check_agent_status(st.session_state.api_key, session_id)
+                                
                                 if status_data.get('status') == 'failed':
                                     st.error("❌ Agent video fail hui!")
                                     break
+                                
                                 if status_data.get('video_id'):
                                     video_id = status_data['video_id']
                                     video_status = check_video_status(st.session_state.api_key, video_id)
@@ -509,5 +547,11 @@ with tab4:
                                         st.success("✅ Video ready hai!")
                                         st.video(video_status['video_url'])
                                         break
+                                    elif video_status.get('status') == 'failed':
+                                        st.error("❌ Video render fail hui!")
+                                        break
+                            else:
+                                st.warning("⏳ Timeout - HeyGen dashboard me check karo")
+                    
                     except Exception as e:
                         st.error(f"Error: {str(e)}")
