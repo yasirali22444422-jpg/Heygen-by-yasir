@@ -1,5 +1,5 @@
 # ============================================================
-# app.py - FINAL VERSION (Avatar III + Avatar IV Both)
+# app.py - FINAL FIXED VERSION (Avatar IV Working)
 # ============================================================
 
 import streamlit as st
@@ -31,8 +31,6 @@ if 'voice_name' not in st.session_state:
     st.session_state.voice_name = None
 if '_voices' not in st.session_state:
     st.session_state._voices = []
-if '_avatars' not in st.session_state:
-    st.session_state._avatars = []
 if 'video_history' not in st.session_state:
     st.session_state.video_history = []
 
@@ -82,6 +80,13 @@ st.markdown("""
     .summary-box .row .value.missing {
         color: #f87171;
     }
+    .info-box {
+        background: #1c1c26;
+        border: 1px solid #7c3aed;
+        border-radius: 8px;
+        padding: 10px;
+        margin: 10px 0;
+    }
     .warning-box {
         background: #1c1c26;
         border: 1px solid #fbbf24;
@@ -120,36 +125,8 @@ with col3:
 
 # ===== FUNCTIONS =====
 
-def compress_image_to_jpeg(file_bytes, max_size_mb=2):
-    """Compress image to under max_size_mb"""
-    try:
-        img = Image.open(io.BytesIO(file_bytes))
-        if img.mode in ('RGBA', 'LA', 'P'):
-            img = img.convert('RGB')
-        
-        quality = 90
-        buffer = None
-        while quality > 10:
-            buffer = io.BytesIO()
-            img.save(buffer, format='JPEG', quality=quality, optimize=True)
-            size = buffer.tell() / (1024 * 1024)
-            if size < max_size_mb:
-                break
-            quality -= 5
-        
-        if buffer is None:
-            raise Exception("Could not compress image")
-        return buffer.getvalue(), "image/jpeg"
-    except Exception as e:
-        raise Exception(f"Image compression failed: {str(e)}")
-
 def upload_avatar_iii(api_key, file_bytes, mime_type, file_name):
     """Upload to Avatar III endpoint"""
-    # Compress if > 2MB
-    if len(file_bytes) > 2 * 1024 * 1024:
-        file_bytes, mime_type = compress_image_to_jpeg(file_bytes, 2)
-        file_name = file_name.rsplit('.', 1)[0] + '.jpg'
-    
     url = "https://upload.heygen.com/v1/talking_photo"
     files = {'file': (file_name, file_bytes, mime_type)}
     headers = {'x-api-key': api_key}
@@ -210,7 +187,10 @@ def list_voices(api_key):
     return data['data'] if isinstance(data['data'], list) else data['data'].get('voices', [])
 
 def generate_video_av4(api_key, image_key, voice_id, script, title):
-    """Generate video using Avatar IV"""
+    """
+    Generate video using Avatar IV - CORRECT ENDPOINT
+    """
+    # Avatar IV script limit is 5000 chars
     if len(script) > 5000:
         raise Exception("Script 5000 characters se zyada hai")
     
@@ -223,7 +203,7 @@ def generate_video_av4(api_key, image_key, voice_id, script, title):
     }
     
     response = requests.post(
-        "https://api.heygen.com/v2/video/av4/generate",
+        "https://api.heygen.com/v2/video/av4/generate",  # ✅ Correct endpoint
         headers={"x-api-key": api_key, "Content-Type": "application/json"},
         json=payload
     )
@@ -235,6 +215,7 @@ def generate_video_av4(api_key, image_key, voice_id, script, title):
     video_id = data.get('data', {}).get('video_id')
     if not video_id:
         raise Exception("video_id not found in response")
+    
     return video_id
 
 def generate_video_iii(api_key, talking_photo_id, voice_id, script, title):
@@ -289,6 +270,16 @@ def generate_video_iii(api_key, talking_photo_id, voice_id, script, title):
         raise Exception("video_id not found in response")
     return video_id
 
+def check_video_status(api_key, video_id):
+    response = requests.get(
+        f"https://api.heygen.com/v1/video_status.get?video_id={video_id}",
+        headers={"x-api-key": api_key}
+    )
+    data = response.json()
+    if response.status_code != 200 or data.get('error'):
+        raise Exception(data.get('error', {}).get('message', f'Status check fail hui'))
+    return data['data']
+
 def generate_agent_video(api_key, prompt, voice_id, avatar_id, orientation="landscape"):
     """Generate agent video - requires Avatar III (talking_photo_id)"""
     payload = {"prompt": prompt, "orientation": orientation}
@@ -311,16 +302,6 @@ def generate_agent_video(api_key, prompt, voice_id, avatar_id, orientation="land
     if not session_id:
         raise Exception("session_id not found in response")
     return session_id
-
-def check_video_status(api_key, video_id):
-    response = requests.get(
-        f"https://api.heygen.com/v1/video_status.get?video_id={video_id}",
-        headers={"x-api-key": api_key}
-    )
-    data = response.json()
-    if response.status_code != 200 or data.get('error'):
-        raise Exception(data.get('error', {}).get('message', f'Status check fail hui'))
-    return data['data']
 
 def check_agent_status(api_key, session_id):
     response = requests.get(
@@ -359,8 +340,8 @@ with tab2:
         
         engine = st.radio(
             "Engine:",
-            ["avatar_iii (For Agent Video)", "avatar_iv (Script Se Video)"],
-            index=0
+            ["avatar_iii (For Agent Video)", "avatar_iv (For Script Video)"],
+            index=1  # Default to Avatar IV
         )
         
         if avatar_file:
@@ -384,7 +365,6 @@ with tab2:
                         st.session_state.talking_photo_id = result['talking_photo_id']
                         st.session_state.avatar_engine = "avatar_iii"
                         st.success("✅ Avatar III save ho gaya!")
-                        st.info(f"🆔 ID: {result['talking_photo_id'][:30]}...")
                     else:
                         result = upload_avatar_iv(
                             st.session_state.api_key,
@@ -395,7 +375,6 @@ with tab2:
                         st.session_state.image_key = result['image_key']
                         st.session_state.avatar_engine = "avatar_iv"
                         st.success("✅ Avatar IV save ho gaya!")
-                        st.info(f"🆔 Key: {result['image_key'][:30]}...")
                     
                     st.session_state.avatar_preview_url = result['preview_url']
                     st.rerun()
@@ -479,149 +458,150 @@ with tab4:
     </div>
     """, unsafe_allow_html=True)
     
-    tab_vid1, tab_vid2 = st.tabs(["✍️ Script Se", "🤖 Topic Se (Agent)"])
+    # ===== SCRIPT SE VIDEO =====
+    st.markdown("### ✍️ Script Se Video")
     
-    # ===== SCRIPT SE TAB =====
-    with tab_vid1:
-        st.markdown("""
-        <div class="success-box">
-            <strong style="color:#4ade80;">✅ Script Se Video</strong><br>
-            <span style="color:#8b8b9a;">Avatar III aur Avatar IV dono ke saath kaam karta hai</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        script = st.text_area("Script likho", placeholder="Yahan exact text likho jo avatar bolega...", height=150)
-        
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            title = st.text_input("Video Title (optional)", placeholder="Video ka naam")
-        
-        script_len = len(script)
-        if script_len > 0:
-            if st.session_state.talking_photo_id and script_len <= 30000:
+    st.markdown("""
+    <div class="info-box">
+        <strong style="color:#7c3aed;">📝 Avatar IV - Script Se Video</strong><br>
+        <span style="color:#8b8b9a;">Avatar IV ke saath <strong>script</strong> likh kar video banaen</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    script = st.text_area(
+        "Script likho (Avatar IV: maximum 5000 characters)",
+        placeholder="Yahan exact text likho jo avatar bolega...",
+        height=150
+    )
+    
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        title = st.text_input("Video Title (optional)", placeholder="Video ka naam")
+    
+    # Script length check
+    script_len = len(script)
+    if script_len > 0:
+        if st.session_state.image_key:
+            if script_len <= 5000:
+                st.info(f"📝 {script_len} / 5000 characters ✅")
+            else:
+                st.error(f"❌ {script_len} / 5000 characters - Too long!")
+        elif st.session_state.talking_photo_id:
+            if script_len <= 30000:
                 st.info(f"📝 {script_len} / 30000 characters (Avatar III)")
-            elif st.session_state.image_key and script_len <= 5000:
-                st.info(f"📝 {script_len} / 5000 characters (Avatar IV)")
-            elif st.session_state.image_key and script_len > 5000:
-                st.error(f"❌ Avatar IV limit 5000 characters")
-            elif st.session_state.talking_photo_id and script_len > 30000:
-                st.error(f"❌ Avatar III limit 30000 characters")
-        
-        if st.button("🎬 Render Karo", use_container_width=True):
-            if not avatar_ready:
-                st.error("❌ Pehle Avatar tab se photo upload karo!")
-            elif not st.session_state.voice_id:
-                st.error("❌ Pehle Voice tab se voice select karo!")
-            elif not script:
-                st.error("❌ Script likho!")
             else:
-                with st.spinner("Video render ho rahi hai..."):
-                    try:
-                        if st.session_state.talking_photo_id:
-                            # Use Avatar III
-                            if len(script) > 30000:
-                                st.error("❌ Script 30000 characters se zyada hai!")
-                                st.stop()
-                            video_id = generate_video_iii(
-                                st.session_state.api_key,
-                                st.session_state.talking_photo_id,
-                                st.session_state.voice_id,
-                                script,
-                                title
-                            )
-                        else:
-                            # Use Avatar IV
-                            if len(script) > 5000:
-                                st.error("❌ Avatar IV limit: 5000 characters!")
-                                st.stop()
-                            video_id = generate_video_av4(
-                                st.session_state.api_key,
-                                st.session_state.image_key,
-                                st.session_state.voice_id,
-                                script,
-                                title
-                            )
-                        
-                        st.success(f"✅ Video generate ho rahi hai! ID: {video_id}")
-                        
-                        with st.spinner("Video render ho rahi hai... (1-3 minute)"):
-                            for _ in range(30):
-                                time.sleep(10)
-                                status_data = check_video_status(st.session_state.api_key, video_id)
-                                if status_data.get('status') == 'completed':
-                                    st.success("✅ Video ready hai!")
-                                    st.video(status_data['video_url'])
-                                    break
-                                elif status_data.get('status') == 'failed':
-                                    st.error("❌ Video generation fail hui!")
-                                    break
-                            else:
-                                st.warning("⏳ Timeout - HeyGen dashboard me check karo")
-                    
-                    except Exception as e:
-                        st.error(f"Error: {str(e)}")
+                st.error(f"❌ {script_len} / 30000 characters - Too long!")
+        else:
+            st.info(f"📝 {script_len} characters")
     
-    # ===== TOPIC SE (AGENT) TAB =====
-    with tab_vid2:
-        st.markdown("""
-        <div class="warning-box">
-            <strong style="color:#fbbf24;">⚠️ Agent Video - Sirf Avatar III</strong><br>
-            <span style="color:#8b8b9a;">Agent video ke liye Avatar III (talking_photo_id) hona chahiye</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        if not st.session_state.talking_photo_id:
-            st.error("❌ Agent Video ke liye Avatar III upload karo (Avatar tab mein)")
-        
-        prompt = st.text_area("Topic / Prompt", placeholder="Jaise: 'Collagen ke fayde...'", height=100)
-        
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            agent_orientation = st.selectbox("Orientation", ["landscape", "portrait"], index=0, key="agent_ori")
-        with col2:
-            agent_title = st.text_input("Video Title (optional)", placeholder="Video ka naam", key="agent_title")
-        
-        if st.button("🤖 Agent Video Banao", use_container_width=True):
-            if not st.session_state.talking_photo_id:
-                st.error("❌ Agent Video ke liye Avatar III chahiye! Avatar tab mein upload karo.")
-            elif not st.session_state.voice_id:
-                st.error("❌ Pehle Voice tab se voice select karo!")
-            elif not prompt:
-                st.error("❌ Prompt likho!")
-            else:
-                with st.spinner("Agent video generate ho rahi hai..."):
-                    try:
-                        session_id = generate_agent_video(
-                            st.session_state.api_key,
-                            prompt,
-                            st.session_state.voice_id,
-                            st.session_state.talking_photo_id,
-                            agent_orientation
-                        )
-                        
-                        st.success(f"✅ Agent video shuru ho gayi! Session: {session_id}")
-                        
-                        with st.spinner("Video render ho rahi hai... (2-3 minute)"):
-                            for _ in range(40):
-                                time.sleep(10)
-                                status_data = check_agent_status(st.session_state.api_key, session_id)
-                                
-                                if status_data.get('status') == 'failed':
-                                    st.error("❌ Agent video fail hui!")
-                                    break
-                                
-                                if status_data.get('video_id'):
-                                    video_id = status_data['video_id']
-                                    video_status = check_video_status(st.session_state.api_key, video_id)
-                                    if video_status.get('status') == 'completed':
-                                        st.success("✅ Video ready hai!")
-                                        st.video(video_status['video_url'])
-                                        break
-                                    elif video_status.get('status') == 'failed':
-                                        st.error("❌ Video render fail hui!")
-                                        break
-                            else:
-                                st.warning("⏳ Timeout - HeyGen dashboard me check karo")
+    if st.button("🎬 Render Karo - Avatar IV", use_container_width=True):
+        if not st.session_state.image_key:
+            st.error("❌ Avatar IV upload karo! Avatar tab mein 'avatar_iv' select karo.")
+        elif not st.session_state.voice_id:
+            st.error("❌ Voice select karo!")
+        elif not script:
+            st.error("❌ Script likho!")
+        elif len(script) > 5000:
+            st.error("❌ Avatar IV limit: 5000 characters!")
+        else:
+            with st.spinner("Video render ho rahi hai..."):
+                try:
+                    video_id = generate_video_av4(
+                        st.session_state.api_key,
+                        st.session_state.image_key,
+                        st.session_state.voice_id,
+                        script,
+                        title
+                    )
                     
-                    except Exception as e:
-                        st.error(f"Error: {str(e)}")
+                    st.success(f"✅ Video generate ho rahi hai! ID: {video_id}")
+                    
+                    with st.spinner("Video render ho rahi hai... (1-3 minute)"):
+                        for _ in range(30):
+                            time.sleep(10)
+                            status_data = check_video_status(st.session_state.api_key, video_id)
+                            if status_data.get('status') == 'completed':
+                                st.success("✅ Video ready hai!")
+                                st.video(status_data['video_url'])
+                                break
+                            elif status_data.get('status') == 'failed':
+                                st.error("❌ Video generation fail hui!")
+                                break
+                        else:
+                            st.warning("⏳ Timeout - HeyGen dashboard me check karo")
+                
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+    
+    st.markdown("---")
+    
+    # ===== AVATAR III (Agent Video) =====
+    st.markdown("### 🤖 Agent Video (Avatar III Only)")
+    
+    st.markdown("""
+    <div class="warning-box">
+        <strong style="color:#fbbf24;">⚠️ Agent Video - Sirf Avatar III</strong><br>
+        <span style="color:#8b8b9a;">Agent video ke liye <strong>Avatar III</strong> (talking_photo_id) hona chahiye</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if not st.session_state.talking_photo_id:
+        st.warning("Agent Video ke liye Avatar III upload karo (Avatar tab mein)")
+    
+    prompt = st.text_area(
+        "Topic / Prompt (Agent Video)",
+        placeholder="Jaise: 'Collagen ke fayde...'",
+        height=80,
+        key="agent_prompt"
+    )
+    
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        agent_orientation = st.selectbox("Orientation", ["landscape", "portrait"], index=0, key="agent_ori")
+    with col2:
+        agent_title = st.text_input("Video Title (optional)", placeholder="Video ka naam", key="agent_title")
+    
+    if st.button("🤖 Agent Video Banao", use_container_width=True):
+        if not st.session_state.talking_photo_id:
+            st.error("❌ Agent Video ke liye Avatar III chahiye! Avatar tab mein upload karo.")
+        elif not st.session_state.voice_id:
+            st.error("❌ Voice select karo!")
+        elif not prompt:
+            st.error("❌ Prompt likho!")
+        else:
+            with st.spinner("Agent video generate ho rahi hai..."):
+                try:
+                    session_id = generate_agent_video(
+                        st.session_state.api_key,
+                        prompt,
+                        st.session_state.voice_id,
+                        st.session_state.talking_photo_id,
+                        agent_orientation
+                    )
+                    
+                    st.success(f"✅ Agent video shuru ho gayi! Session: {session_id}")
+                    
+                    with st.spinner("Video render ho rahi hai... (2-3 minute)"):
+                        for _ in range(40):
+                            time.sleep(10)
+                            status_data = check_agent_status(st.session_state.api_key, session_id)
+                            
+                            if status_data.get('status') == 'failed':
+                                st.error("❌ Agent video fail hui!")
+                                break
+                            
+                            if status_data.get('video_id'):
+                                video_id = status_data['video_id']
+                                video_status = check_video_status(st.session_state.api_key, video_id)
+                                if video_status.get('status') == 'completed':
+                                    st.success("✅ Video ready hai!")
+                                    st.video(video_status['video_url'])
+                                    break
+                                elif video_status.get('status') == 'failed':
+                                    st.error("❌ Video render fail hui!")
+                                    break
+                        else:
+                            st.warning("⏳ Timeout - HeyGen dashboard me check karo")
+                
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
